@@ -1,0 +1,50 @@
+services:
+  api:
+    build: .
+    volumes: [".:/src"]  # dev: código atual sem rebuild
+    restart: unless-stopped
+    env_file: .env
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+  worker:
+    build: .
+    volumes: [".:/src"]  # dev: código atual sem rebuild
+    restart: unless-stopped
+    env_file: .env
+    command: python -m app.worker
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pontelo
+      POSTGRES_PASSWORD: pontelo
+      POSTGRES_DB: pontelo
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pontelo"]
+      interval: 2s
+      retries: 15
+  redis:
+    image: redis:7-alpine
+  falsos:
+    build: .
+    restart: unless-stopped
+    command: uvicorn tests.falsos.app:app --host 0.0.0.0 --port 9000
+    ports: ["9000:9000"]
+  testes:
+    build: .
+    env_file: .env
+    command: pytest -q -p no:warnings
+    volumes: [".:/src"]
+    profiles: ["testes"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+volumes:
+  pgdata:
